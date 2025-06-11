@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Testiq - Matematik Test</title>
+<link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+  <script type="module" src="/public/app.js"></script>
+
+<header>
+  <img src="" alt="Avatar" id="userAvatar" style="display:none;" />
+  <div id="userName" style="color:#fff; font-weight:700; margin-right: 15px;"></div>
+  <button id="deleteAccountBtn" title="Akkauntingizni o'chirish" style="display:none;">🗑️ Akkauntni o'chirish</button>
+</header>
+
+<main>
+
+  <section id="welcome">
+    <h1>Assalomu Alaykum!</h1>
+    <p>
+      Siz bu sayt orqali matematikani qiziqarli o‘rganishingiz mumkin!<br />
+      Har bir foydalanuvchi savollarga javob berib, ball to‘playdi va <strong>reyting</strong>da yuqoriga ko‘tariladi.<br />
+      Sizda bor-yo‘g‘i <strong>10 daqiqa</strong>. Tezroq boshlang!
+    </p>
+    <button id="startBtn">🚀 Boshlash</button>
+  </section>
+
+  <section id="register">
+    <h2>Ro'yxatdan o'ting</h2>
+    <label for="userNameInput">Ismingiz:</label>
+    <input type="text" id="userNameInput" maxlength="15" autocomplete="off" placeholder="Ismingizni kiriting" />
+    <label>Avatar tanlang:</label>
+    <div id="avatars"></div>
+    <button id="registerBtn" data-selected-avatar="0">Ro'yxatdan o'tish</button>
+  </section>
+
+  <section id="quiz">
+    <div id="timer">10:00</div>
+    <div id="questionBox">Savol yuklanmoqda...</div>
+    <input type="text" id="answerInput" placeholder="Javobingizni yozing" autocomplete="off" />
+    <button id="submitAnswer">Javobni yuborish</button>
+    <div id="feedback"></div>
+    <button id="leaderboardBtn">Reytingni ko‘rish</button>
+  </section>
+
+  <!-- Leaderboard modal -->
+  <div id="leaderboardModal">
+    <div id="leaderboardContent">
+      <span id="closeLeaderboard">&times;</span>
+      <h2>Reyting</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>№</th>
+            <th>Avatar</th>
+            <th>Ism</th>
+            <th>To'g'ri javoblar</th>
+            <th>Noto'g'ri javoblar</th>
+            <th>Ball</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Avatarlar ro'yxati (10 ta)
+  const avatarUrls = [
+    'https://i.pravatar.cc/60?img=1',
+    'https://i.pravatar.cc/60?img=2',
+    'https://i.pravatar.cc/60?img=3',
+    'https://i.pravatar.cc/60?img=4',
+    'https://i.pravatar.cc/60?img=5',
+    'https://i.pravatar.cc/60?img=6',
+    'https://i.pravatar.cc/60?img=7',
+    'https://i.pravatar.cc/60?img=8',
+    'https://i.pravatar.cc/60?img=9',
+    'https://i.pravatar.cc/60?img=10',
+  ];
+
+  // HTML elementlar
+  const startBtn = document.getElementById('startBtn');
+  const welcomeSection = document.getElementById('welcome');
+  const registerSection = document.getElementById('register');
+  const quizSection = document.getElementById('quiz');
+  const userNameInput = document.getElementById('userNameInput');
+  const avatarsDiv = document.getElementById('avatars');
+  const registerBtn = document.getElementById('registerBtn');
+  const timerDiv = document.getElementById('timer');
+  const questionBox = document.getElementById('questionBox');
+  const answerInput = document.getElementById('answerInput');
+  const submitAnswerBtn = document.getElementById('submitAnswer');
+  const feedbackDiv = document.getElementById('feedback');
+  const leaderboardBtn = document.getElementById('leaderboardBtn');
+  const leaderboardModal = document.getElementById('leaderboardModal');
+  const leaderboardBody = document.getElementById('leaderboardBody');
+  const closeLeaderboard = document.getElementById('closeLeaderboard');
+  const userAvatar = document.getElementById('userAvatar');
+  const userNameDisplay = document.getElementById('userName');
+  const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+
+  let users = []; // foydalanuvchilar arrayi
+  let currentUser = null;
+  let timerInterval = null;
+  let timeLeft = 600; // 10 daqiqa (sekundlarda)
+
+  // Test savollari (random hosil qilinadi)
+  function generateQuestion() {
+    // Tasodifiy amal tanlash: 0- qo'shish, 1- ayirish, 2- ko'paytirish
+    const operation = Math.floor(Math.random() * 3);
+    let a, b, questionText, answer;
+
+    switch (operation) {
+      case 0: // Qo'shish
+        a = Math.floor(Math.random() * 100) + 1;
+        b = Math.floor(Math.random() * 100) + 1;
+        questionText = `${a} + ${b} = ?`;
+        answer = a + b;
+        break;
+      case 1: // Ayirish
+        a = Math.floor(Math.random() * 100) + 1;
+        b = Math.floor(Math.random() * a) + 1; // ayirishda manfiy bo'lmasin
+        questionText = `${a} - ${b} = ?`;
+        answer = a - b;
+        break;
+      case 2: // Ko'paytirish
+        a = Math.floor(Math.random() * 20) + 1;
+        b = Math.floor(Math.random() * 20) + 1;
+        questionText = `${a} × ${b} = ?`;
+        answer = a * b;
+        break;
+    }
+    return { questionText, answer };
+  }
+
+  let currentQuestion = null;
+
+  function showNextQuestion() {
+    currentQuestion = generateQuestion();
+    questionBox.textContent = currentQuestion.questionText;
+    answerInput.value = '';
+    feedbackDiv.textContent = '';
+    answerInput.focus();
+  }
+
+  // Foydalanuvchi javobini tekshirish
+  function checkAnswer() {
+    const userAnswer = answerInput.value.trim();
+
+    if (userAnswer === '') {
+      feedbackDiv.style.color = 'red';
+      feedbackDiv.textContent = "Iltimos, javobingizni kiriting.";
+      return;
+    }
+
+    if (!/^\d+$/.test(userAnswer)) {
+      feedbackDiv.style.color = 'red';
+      feedbackDiv.textContent = "Faqat son kiriting.";
+      return;
+    }
+
+    const numericAnswer = parseInt(userAnswer, 10);
+
+    if (numericAnswer === currentQuestion.answer) {
+      feedbackDiv.style.color = 'green';
+      feedbackDiv.textContent = "Javob to'g'ri! 🎉";
+
+      // Statistikani yangilash
+      currentUser.correct++;
+      currentUser.score += 10; // har to'g'ri javob 10 ball
+      saveUsers();
+
+      // Yangi savol
+      setTimeout(showNextQuestion, 1200);
+
+    } else {
+      feedbackDiv.style.color = 'red';
+      feedbackDiv.textContent = `Noto'g'ri javob. To'g'ri javob: ${currentQuestion.answer}`;
+      currentUser.wrong++;
+      saveUsers();
+
+      setTimeout(showNextQuestion, 1500);
+    }
+  }
+
+  // Vaqtni boshlash
+  function startTimer() {
+    clearInterval(timerInterval);
+    timeLeft = 600; // 10 daqiqa
+
+    timerInterval = setInterval(() => {
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        endQuiz();
+        return;
+      }
+      timeLeft--;
+      timerDiv.textContent = formatTime(timeLeft);
+    }, 1000);
+  }
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+  }
+
+  function endQuiz() {
+    alert(`Vaqtingiz tugadi!\nTo'g'ri javoblar: ${currentUser.correct}\nNoto'g'ri javoblar: ${currentUser.wrong}\nUmumiy ball: ${currentUser.score}`);
+    showLeaderboard();
+  }
+
+  // Foydalanuvchilarni localStorage ga saqlash
+  function saveUsers() {
+    localStorage.setItem('testiq_users', JSON.stringify(users));
+  }
+
+  // Foydalanuvchilarni localStorage dan yuklash
+  function loadUsers() {
+    const saved = localStorage.getItem('testiq_users');
+    if (saved) {
+      users = JSON.parse(saved);
+    } else {
+      users = [];
+    }
+
+    // Agar avval ro'yxatdan o'tgan foydalanuvchi bo'lsa, uni tanlash
+    const lastUserName = localStorage.getItem('testiq_currentUser');
+    if (lastUserName) {
+      const u = findUser(lastUserName);
+      if (u) {
+        currentUser = u;
+        showCurrentUser();
+        showQuizSection();
+        startTimer();
+        showNextQuestion();
+      } else {
+        localStorage.removeItem('testiq_currentUser');
+      }
+    }
+  }
+
+  // Foydalanuvchini topish ism bo'yicha
+  function findUser(name) {
+    return users.find(u => u.name.toLowerCase() === name.toLowerCase());
+  }
+
+  // Foydalanuvchini ekranga chiqarish
+  function showCurrentUser() {
+    if (!currentUser) return;
+    userNameDisplay.textContent = currentUser.name;
+    userAvatar.src = avatarUrls[currentUser.avatarIndex] || avatarUrls[0];
+    userAvatar.style.display = 'inline-block';
+    deleteAccountBtn.style.display = 'inline-block';
+  }
+
+  // Avatarlari ko'rsatish va tanlash
+  function renderAvatars() {
+    avatarsDiv.innerHTML = '';
+    avatarUrls.forEach((url, idx) => {
+      const img = document.createElement('img');
+      img.src = url;
+      img.classList.add('avatar');
+      if (idx === 0) img.classList.add('selected');
+      img.title = `Avatar ${idx + 1}`;
+      img.addEventListener('click', () => {
+        document.querySelectorAll('.avatar').forEach(a => a.classList.remove('selected'));
+        img.classList.add('selected');
+        registerBtn.dataset.selectedAvatar = idx;
+      });
+      avatarsDiv.appendChild(img);
+    });
+    registerBtn.dataset.selectedAvatar = 0;
+  }
+
+  // Bo'limlarni ko'rsatish
+  function showQuizSection() {
+    welcomeSection.style.display = 'none';
+    registerSection.style.display = 'none';
+    quizSection.style.display = 'block';
+  }
+
+  function showRegisterSection() {
+    welcomeSection.style.display = 'none';
+    registerSection.style.display = 'block';
+    quizSection.style.display = 'none';
+  }
+
+  // Reytingni ko'rsatish
+  function showLeaderboard() {
+    leaderboardBody.innerHTML = '';
+
+    // Ball bo'yicha tartiblash, katta ball yuqorida
+    const sorted = users.slice().sort((a,b) => b.score - a.score);
+
+    if (sorted.length === 0) {
+      leaderboardBody.innerHTML = `<tr><td colspan="6">Hech qanday foydalanuvchi yo'q</td></tr>`;
+    } else {
+      sorted.forEach((u, i) => {
+        leaderboardBody.innerHTML += `
+          <tr>
+            <td>${i + 1}</td>
+            <td><img src="${avatarUrls[u.avatarIndex]}" alt="Avatar" class="leaderAvatar" /></td>
+            <td>${escapeHtml(u.name)}</td>
+            <td>${u.correct}</td>
+            <td>${u.wrong}</td>
+            <td>${u.score}</td>
+          </tr>
+        `;
+      });
+    }
+    leaderboardModal.style.display = 'block';
+  }
+
+  // HTML maxsus belgilarni qochirish
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, function(m) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+    });
+  }
+
+  // Hisobni o'chirish
+  deleteAccountBtn.addEventListener('click', () => {
+    if (!currentUser) return;
+    if (confirm("Akkauntingizni o'chirmoqchimisiz? Bu barcha ma'lumotlaringizni o'chiradi!")) {
+      users = users.filter(u => u.name !== currentUser.name);
+      saveUsers();
+      currentUser = null;
+      localStorage.removeItem('testiq_currentUser');
+
+      // Header va bo'limlarni tiklash
+      userAvatar.style.display = 'none';
+      userNameDisplay.textContent = '';
+      deleteAccountBtn.style.display = 'none';
+
+      quizSection.style.display = 'none';
+      registerSection.style.display = 'none';
+      welcomeSection.style.display = 'block';
+    }
+  });
+
+  // Button va input eventlari
+
+  startBtn.addEventListener('click', () => {
+    renderAvatars();
+    showRegisterSection();
+  });
+
+  registerBtn.addEventListener('click', () => {
+    const name = userNameInput.value.trim();
+    const avatarIndex = parseInt(registerBtn.dataset.selectedAvatar);
+
+    if (name === '') {
+      alert("Iltimos, ismingizni kiriting.");
+      return;
+    }
+
+    if (findUser(name)) {
+      alert("Bu ism oldin ro'yxatdan o'tgan. Iltimos, boshqa ism tanlang.");
+      return;
+    }
+
+    currentUser = {
+      name,
+      avatarIndex,
+      correct: 0,
+      wrong: 0,
+      score: 0
+    };
+
+    users.push(currentUser);
+    saveUsers();
+
+    localStorage.setItem('testiq_currentUser', name);
+    showCurrentUser();
+
+    showQuizSection();
+    showNextQuestion();
+    startTimer();
+  });
+
+  submitAnswerBtn.addEventListener('click', checkAnswer);
+  answerInput.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') checkAnswer();
+  });
+
+  leaderboardBtn.addEventListener('click', showLeaderboard);
+  closeLeaderboard.addEventListener('click', () => {
+    leaderboardModal.style.display = 'none';
+  });
+
+  // Boshlanganda foydalanuvchilarni yuklash va holatni tiklash
+  window.addEventListener('load', loadUsers);
+</script>
+
+</body>
+</html> 
